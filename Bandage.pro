@@ -119,7 +119,8 @@ SOURCES += \
     ogdf/internal/energybased/MultilevelGraph.cpp \
     ui/graphinfodialog.cpp \
     ui/tablewidgetitemname.cpp \
-    ui/changenodedepthdialog.cpp
+    ui/changenodedepthdialog.cpp \
+    ui/selectededgepathwidget.cpp
 
 HEADERS  += \
     program/settings.h \
@@ -176,6 +177,7 @@ HEADERS  += \
     command_line/reduce.h \
     program/gafparser.h \
     ui/gafpathsdialog.h \
+    ui/selectededgepathwidget.h \
     ogdf/basic/Graph.h \
     ogdf/basic/GraphAttributes.h \
     ogdf/energybased/FMMMLayout.h \

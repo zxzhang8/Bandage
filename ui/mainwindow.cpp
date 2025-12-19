@@ -68,12 +68,17 @@
 #include "changenodedepthdialog.h"
 #include <limits>
 #include "graphinfodialog.h"
+#include "selectededgepathwidget.h"
+#include <QHash>
+#include <QQueue>
+#include <QSet>
 
 MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     QMainWindow(0),
     ui(new Ui::MainWindow), m_layoutThread(0), m_imageFilter("PNG (*.png)"),
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
-    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0), m_alreadyShown(false)
+    m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0),
+    m_selectedEdgePathTabIndex(-1), m_selectedEdgePathWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
 
@@ -188,6 +193,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->maxDepthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(depthRangeChanged()));
     connect(ui->startingNodesExactMatchRadioButton, SIGNAL(toggled(bool)), this, SLOT(startingNodesExactMatchChanged()));
     connect(ui->actionSpecify_exact_path_for_copy_save, SIGNAL(triggered()), this, SLOT(openPathSpecifyDialog()));
+    connect(ui->selectedEdgesGenSeqButton, SIGNAL(clicked()), this, SLOT(generateSequenceFromSelectedEdges()));
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
     connect(g_graphicsView, SIGNAL(saveSelectedSequencesToFile()), this, SLOT(saveSelectedSequencesToFile()));
@@ -256,6 +262,15 @@ void MainWindow::cleanUp()
     ui->blastQueryComboBox->addItem("none");
     ui->gafFileLabel->setText("Not loaded");
 
+    if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
+        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
+        delete tab;
+        m_selectedEdgePathTabIndex = -1;
+        m_selectedEdgePathWidget = 0;
+    }
+
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
     {
         QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
@@ -277,6 +292,15 @@ void MainWindow::cleanUp()
     {
         delete m_blastSearchDialog;
         m_blastSearchDialog = 0;
+    }
+
+    if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
+        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
+        delete tab;
+        m_selectedEdgePathTabIndex = -1;
+        m_selectedEdgePathWidget = 0;
     }
 
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
@@ -418,6 +442,15 @@ void MainWindow::loadGraph(QString fullFileName)
 
     if (fullFileName != "") //User did not hit cancel
     {
+        if (m_selectedEdgePathTabIndex != -1 && m_tabWidget != 0)
+        {
+            QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
+            m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
+            delete tab;
+            m_selectedEdgePathTabIndex = -1;
+            m_selectedEdgePathWidget = 0;
+        }
+
         // Reset any loaded GAF paths because a new graph is being loaded.
         if (m_gafTabIndex != -1 && m_tabWidget != 0)
         {
@@ -569,6 +602,57 @@ void MainWindow::loadGraph2(GraphFileType graphFileType, QString fullFileName)
 
 
 
+void MainWindow::generateSequenceFromSelectedEdges()
+{
+    QString errorMessage;
+    QStringList errorDetails;
+    Path path = makePathFromSelectedEdges(&errorMessage, &errorDetails);
+
+    if (path.isEmpty())
+    {
+        QString message = "Unable to generate a path from the selected edges.";
+        if (!errorMessage.isEmpty())
+            message += "\n\n" + errorMessage;
+        if (!errorDetails.isEmpty())
+            message += "\n - " + errorDetails.join("\n - ");
+
+        QMessageBox::information(this, "Gen Seq", message);
+        return;
+    }
+
+    showSelectedEdgePathTab(path);
+}
+
+
+void MainWindow::showSelectedEdgePathTab(const Path &path)
+{
+    if (m_tabWidget == 0)
+        return;
+
+    if (m_selectedEdgePathTabIndex != -1)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedEdgePathTabIndex);
+        m_tabWidget->removeTab(m_selectedEdgePathTabIndex);
+        delete tab;
+        m_selectedEdgePathTabIndex = -1;
+        m_selectedEdgePathWidget = 0;
+    }
+
+    QList<DeBruijnNode *> nodes = path.getNodes();
+    QStringList missingSequenceNodes;
+    for (int i = 0; i < nodes.size(); ++i)
+    {
+        if (nodes[i]->sequenceIsMissing())
+            missingSequenceNodes << nodes[i]->getName();
+    }
+    bool sequencesAvailable = missingSequenceNodes.isEmpty();
+
+    m_selectedEdgePathWidget = new SelectedEdgePathWidget(m_tabWidget, path, sequencesAvailable, missingSequenceNodes);
+    m_selectedEdgePathTabIndex = m_tabWidget->addTab(m_selectedEdgePathWidget, "Selected path");
+    m_tabWidget->setCurrentIndex(m_selectedEdgePathTabIndex);
+}
+
+
 void MainWindow::displayGraphDetails()
 {
     ui->nodeCountLabel->setText(formatIntForDisplay(g_assemblyGraph->m_nodeCount));
@@ -690,6 +774,216 @@ QString MainWindow::getSelectedEdgeListText()
     }
 
     return edgeText;
+}
+
+
+Path MainWindow::makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const
+{
+    if (errorMessage != 0)
+        errorMessage->clear();
+    if (errorDetails != 0)
+        errorDetails->clear();
+
+    Path emptyPath;
+    std::vector<DeBruijnEdge *> selectedEdges = m_scene->getSelectedEdges();
+    if (selectedEdges.empty())
+    {
+        if (errorMessage != 0)
+            *errorMessage = "No edges are selected.";
+        return emptyPath;
+    }
+
+    QHash<DeBruijnNode *, int> inDegree;
+    QHash<DeBruijnNode *, int> outDegree;
+    QHash<DeBruijnNode *, QList<DeBruijnNode *> > adjacency;
+    QHash<DeBruijnNode *, DeBruijnEdge *> outgoingEdge;
+    QSet<DeBruijnNode *> nodes;
+
+    for (size_t i = 0; i < selectedEdges.size(); ++i)
+    {
+        DeBruijnEdge * edge = selectedEdges[i];
+        DeBruijnNode * start = edge->getStartingNode();
+        DeBruijnNode * end = edge->getEndingNode();
+
+        ++outDegree[start];
+        ++inDegree[end];
+
+        adjacency[start].push_back(end);
+        adjacency[end].push_back(start);
+        nodes.insert(start);
+        nodes.insert(end);
+
+        if (!outgoingEdge.contains(start))
+            outgoingEdge.insert(start, edge);
+    }
+
+    QStringList branchingNodes;
+    QSet<DeBruijnNode *>::const_iterator nodeIt;
+    for (nodeIt = nodes.constBegin(); nodeIt != nodes.constEnd(); ++nodeIt)
+    {
+        DeBruijnNode * node = *nodeIt;
+        int in = inDegree.value(node, 0);
+        int out = outDegree.value(node, 0);
+        if (in > 1 || out > 1)
+            branchingNodes << node->getName() + " (in: " + QString::number(in) + ", out: " + QString::number(out) + ")";
+    }
+
+    if (!branchingNodes.isEmpty())
+    {
+        if (errorMessage != 0)
+            *errorMessage = "Selected edges branch, so there is no single unambiguous path.";
+        if (errorDetails != 0)
+            *errorDetails = branchingNodes;
+        return emptyPath;
+    }
+
+    // Check connectivity ignoring direction.
+    QSet<DeBruijnNode *> visited;
+    QQueue<DeBruijnNode *> queue;
+    queue.enqueue(*(nodes.constBegin()));
+    while (!queue.isEmpty())
+    {
+        DeBruijnNode * node = queue.dequeue();
+        if (visited.contains(node))
+            continue;
+        visited.insert(node);
+        QList<DeBruijnNode *> neighbours = adjacency.value(node);
+        for (int i = 0; i < neighbours.size(); ++i)
+            if (!visited.contains(neighbours[i]))
+                queue.enqueue(neighbours[i]);
+    }
+
+    if (visited.size() != nodes.size())
+    {
+        if (errorMessage != 0)
+            *errorMessage = "Selected edges are not all connected.";
+        if (errorDetails != 0)
+        {
+            QStringList unvisited;
+            for (nodeIt = nodes.constBegin(); nodeIt != nodes.constEnd(); ++nodeIt)
+            {
+                if (!visited.contains(*nodeIt))
+                    unvisited << (*nodeIt)->getName();
+            }
+            *errorDetails = unvisited;
+        }
+        return emptyPath;
+    }
+
+    QList<DeBruijnNode *> startNodes;
+    QList<DeBruijnNode *> endNodes;
+    QStringList degreeIssues;
+    for (nodeIt = nodes.constBegin(); nodeIt != nodes.constEnd(); ++nodeIt)
+    {
+        DeBruijnNode * node = *nodeIt;
+        int in = inDegree.value(node, 0);
+        int out = outDegree.value(node, 0);
+        if (in == 0 && out == 1)
+            startNodes.push_back(node);
+        else if (in == 1 && out == 0)
+            endNodes.push_back(node);
+        else if (!(in == 1 && out == 1))
+            degreeIssues << node->getName() + " (in: " + QString::number(in) + ", out: " + QString::number(out) + ")";
+    }
+
+    if (!degreeIssues.isEmpty())
+    {
+        if (errorMessage != 0)
+            *errorMessage = "Selected edges do not form a linear or circular path.";
+        if (errorDetails != 0)
+            *errorDetails = degreeIssues;
+        return emptyPath;
+    }
+
+    bool circular = false;
+    if (startNodes.isEmpty() && endNodes.isEmpty())
+        circular = true;
+    else if (startNodes.size() != 1 || endNodes.size() != 1)
+    {
+        if (errorMessage != 0)
+            *errorMessage = "Could not identify a single start/end for the selected edges.";
+        if (errorDetails != 0)
+        {
+            QStringList issues;
+            if (startNodes.size() > 1)
+            {
+                QStringList names;
+                for (int i = 0; i < startNodes.size(); ++i)
+                    names << startNodes[i]->getName();
+                issues << "Multiple possible starts: " + names.join(", ");
+            }
+            else if (startNodes.size() == 0)
+                issues << "No starting node identified.";
+            if (endNodes.size() > 1)
+            {
+                QStringList names;
+                for (int i = 0; i < endNodes.size(); ++i)
+                    names << endNodes[i]->getName();
+                issues << "Multiple possible ends: " + names.join(", ");
+            }
+            else if (endNodes.size() == 0)
+                issues << "No ending node identified.";
+            *errorDetails = issues;
+        }
+        return emptyPath;
+    }
+
+    DeBruijnNode * currentNode = circular ? *(nodes.constBegin()) : startNodes.front();
+    QList<DeBruijnNode *> orderedNodes;
+    orderedNodes.push_back(currentNode);
+
+    QSet<DeBruijnEdge *> usedEdges;
+    for (size_t i = 0; i < selectedEdges.size(); ++i)
+    {
+        DeBruijnEdge * edge = outgoingEdge.value(currentNode, 0);
+        if (edge == 0)
+        {
+            if (errorMessage != 0)
+                *errorMessage = "Path stops at " + currentNode->getName() + ".";
+            return emptyPath;
+        }
+        if (usedEdges.contains(edge))
+        {
+            if (errorMessage != 0)
+                *errorMessage = "Path revisits edges around " + currentNode->getName() + ".";
+            return emptyPath;
+        }
+
+        usedEdges.insert(edge);
+        currentNode = edge->getEndingNode();
+        orderedNodes.push_back(currentNode);
+    }
+
+    if (!circular)
+    {
+        DeBruijnNode * expectedEnd = endNodes.front();
+        if (currentNode != expectedEnd)
+        {
+            if (errorMessage != 0)
+                *errorMessage = "Path ends at " + currentNode->getName() + " instead of " + expectedEnd->getName() + ".";
+            return emptyPath;
+        }
+    }
+    else
+    {
+        if (currentNode != orderedNodes.front())
+        {
+            if (errorMessage != 0)
+                *errorMessage = "Circular path does not return to its starting node.";
+            return emptyPath;
+        }
+        orderedNodes.removeLast();
+    }
+
+    Path path = Path::makeFromOrderedNodes(orderedNodes, circular);
+    if (path.isEmpty())
+    {
+        if (errorMessage != 0)
+            *errorMessage = "Selected edges could not be turned into an ordered path.";
+        return emptyPath;
+    }
+
+    return path;
 }
 
 
@@ -2368,6 +2662,7 @@ void MainWindow::setSelectedEdgesWidgetsVisibility(bool visible)
     ui->selectedEdgesTitleLabel->setVisible(visible);
     ui->selectedEdgesTextEdit->setVisible(visible);
     ui->selectedEdgesLine->setVisible(visible);
+    ui->selectedEdgesGenSeqButton->setVisible(visible);
     ui->selectedEdgesSpacerWidget->setVisible(visible);
 }
 

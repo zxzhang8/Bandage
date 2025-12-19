@@ -23,6 +23,7 @@
 #include <QGraphicsScene>
 #include <QMap>
 #include <QString>
+#include <QStringList>
 #include <vector>
 #include <QLineEdit>
 #include <QRectF>
@@ -35,8 +36,10 @@ class GraphicsViewZoom;
 class MyGraphicsScene;
 class DeBruijnNode;
 class DeBruijnEdge;
+class Path;
 class BlastSearchDialog;
 class GafPathsDialog;
+class SelectedEdgePathWidget;
 class QDockWidget;
 
 namespace Ui {
@@ -67,6 +70,8 @@ private:
     QTabWidget * m_tabWidget;
     int m_gafTabIndex;
     GafPathsDialog * m_gafPathsWidget;
+    int m_selectedEdgePathTabIndex;
+    SelectedEdgePathWidget * m_selectedEdgePathWidget;
     bool m_alreadyShown;
 
     void cleanUp();
@@ -95,6 +100,8 @@ private:
     QString convertGraphFileTypeToString(GraphFileType graphFileType);
     void setSelectedNodesWidgetsVisibility(bool visible);
     void setSelectedEdgesWidgetsVisibility(bool visible);
+    Path makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const;
+    void showSelectedEdgePathTab(const Path &path);
     void setStartingNodesWidgetVisibility(bool visible);
     void setNodeDistanceWidgetVisibility(bool visible);
     void setDepthRangeWidgetVisibility(bool visible);
@@ -155,6 +162,7 @@ private slots:
     void openPathSpecifyDialog();
     void openGafPathsDialog();
     void focusOnGafSelection();
+    void generateSequenceFromSelectedEdges();
     void nodeWidthChanged();
     void saveEntireGraphToFasta();
     void saveEntireGraphToFastaOnlyPositiveNodes();

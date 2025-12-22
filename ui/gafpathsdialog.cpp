@@ -26,6 +26,8 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QSpinBox>
+#include <QAbstractSpinBox>
 #include "../graph/debruijnnode.h"
 #include "../graph/graphicsitemnode.h"
 #include "../program/globals.h"
@@ -44,6 +46,10 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_warnings(parseResult.warnings),
     m_table(new QTableWidget(this)),
     m_highlightButton(new QPushButton("Highlight selected paths", this)),
+    m_highlightAllButton(new QPushButton("Highlight all paths", this)),
+    m_filterButton(new QPushButton("Filter", this)),
+    m_resetFilterButton(new QPushButton("Reset", this)),
+    m_mapqFilterSpinBox(new QSpinBox(this)),
     m_warningLabel(new QLabel(this))
 {
     setWindowTitle("GAF Paths");
@@ -56,7 +62,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
 
     m_table->setColumnCount(7);
     QStringList headers;
-    headers << "#" << "Query" << "Strand" << "Nodes" << "Path" << "Query range" << "MAPQ";
+    headers << "#" << "Query" << "Strand" << "MAPQ" << "Nodes" << "Path" << "Query range";
     m_table->setHorizontalHeaderLabels(headers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -64,13 +70,29 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     layout->addWidget(m_table);
 
+    m_mapqFilterSpinBox->setRange(0, 1000);
+    m_mapqFilterSpinBox->setValue(0);
+    m_mapqFilterSpinBox->setPrefix("MAPQ ≥ ");
+    m_mapqFilterSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    m_mapqFilterSpinBox->setFixedWidth(120);
+
     QHBoxLayout * buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(m_highlightButton);
+    buttonLayout->addWidget(m_highlightAllButton);
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(m_mapqFilterSpinBox);
+    buttonLayout->addWidget(m_filterButton);
+    buttonLayout->addWidget(m_resetFilterButton);
     buttonLayout->addStretch();
     layout->addLayout(buttonLayout);
 
     m_warningLabel->setWordWrap(true);
     layout->addWidget(m_warningLabel);
+
+    m_visibleRows.clear();
+    for (int i = 0; i < m_alignments.size(); ++i)
+        m_visibleRows << i;
+    m_currentMapqThreshold = 0;
 
     populateTable();
     showWarnings();
@@ -78,6 +100,9 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
 
     connect(m_table, SIGNAL(itemSelectionChanged()), this, SLOT(onSelectionChanged()));
     connect(m_highlightButton, SIGNAL(clicked()), this, SLOT(highlightSelectedPaths()));
+    connect(m_highlightAllButton, SIGNAL(clicked()), this, SLOT(highlightAllPaths()));
+    connect(m_filterButton, SIGNAL(clicked()), this, SLOT(filterByMapq()));
+    connect(m_resetFilterButton, SIGNAL(clicked()), this, SLOT(resetMapqFilter()));
 }
 
 
@@ -117,15 +142,22 @@ void GafPathsDialog::hideEvent(QHideEvent * event)
 
 void GafPathsDialog::populateTable()
 {
-    m_table->setRowCount(m_alignments.size());
+    m_table->clearContents();
+    m_table->setRowCount(m_visibleRows.size());
 
-    for (int i = 0; i < m_alignments.size(); ++i)
+    for (int row = 0; row < m_visibleRows.size(); ++row)
     {
-        const GafAlignment &a = m_alignments[i];
+        int index = alignmentIndexForRow(row);
+        if (index < 0 || index >= m_alignments.size())
+            continue;
+
+        const GafAlignment &a = m_alignments[index];
 
         QTableWidgetItem * indexItem = new QTableWidgetItem(QString::number(a.lineNumber));
         QTableWidgetItem * queryItem = new QTableWidgetItem(a.queryName);
         QTableWidgetItem * strandItem = new QTableWidgetItem(a.strand);
+        QString mapqString = (a.mappingQuality >= 0) ? QString::number(a.mappingQuality) : "";
+        QTableWidgetItem * mapqItem = new QTableWidgetItem(mapqString);
         QTableWidgetItem * nodeCountItem = new QTableWidgetItem(QString::number(a.path.getNodeCount()));
         QTableWidgetItem * pathItem = new QTableWidgetItem(a.bandagePathString);
 
@@ -136,18 +168,15 @@ void GafPathsDialog::populateTable()
             queryRange = QString::number(a.queryStart) + "-" + QString::number(a.queryEnd);
         QTableWidgetItem * rangeItem = new QTableWidgetItem(queryRange);
 
-        QString mapqString = (a.mappingQuality >= 0) ? QString::number(a.mappingQuality) : "";
-        QTableWidgetItem * mapqItem = new QTableWidgetItem(mapqString);
+        indexItem->setData(Qt::UserRole, index);
 
-        indexItem->setData(Qt::UserRole, i);
-
-        m_table->setItem(i, 0, indexItem);
-        m_table->setItem(i, 1, queryItem);
-        m_table->setItem(i, 2, strandItem);
-        m_table->setItem(i, 3, nodeCountItem);
-        m_table->setItem(i, 4, pathItem);
-        m_table->setItem(i, 5, rangeItem);
-        m_table->setItem(i, 6, mapqItem);
+        m_table->setItem(row, 0, indexItem);
+        m_table->setItem(row, 1, queryItem);
+        m_table->setItem(row, 2, strandItem);
+        m_table->setItem(row, 3, mapqItem);
+        m_table->setItem(row, 4, nodeCountItem);
+        m_table->setItem(row, 5, pathItem);
+        m_table->setItem(row, 6, rangeItem);
     }
 
     m_table->resizeColumnsToContents();
@@ -173,6 +202,9 @@ void GafPathsDialog::showWarnings()
 void GafPathsDialog::updateButtons()
 {
     m_highlightButton->setEnabled(!m_table->selectedItems().isEmpty());
+    m_highlightAllButton->setEnabled(!m_visibleRows.isEmpty());
+    m_filterButton->setEnabled(true);
+    m_resetFilterButton->setEnabled(m_visibleRows.size() != m_alignments.size() || m_currentMapqThreshold != 0);
 }
 
 
@@ -191,14 +223,6 @@ void GafPathsDialog::highlightSelectedPaths()
         return;
     }
 
-    g_memory->gafPathDialogIsVisible = true;
-    g_memory->queryPaths.clear();
-
-    g_graphicsView->scene()->blockSignals(true);
-    g_graphicsView->scene()->clearSelection();
-
-    QStringList nodesNotFound;
-
     QList<int> selectedRows;
     for (int i = 0; i < selection.size(); ++i)
     {
@@ -210,13 +234,44 @@ void GafPathsDialog::highlightSelectedPaths()
         }
     }
 
-    for (int i = 0; i < selectedRows.size(); ++i)
+    highlightPathsForRows(selectedRows);
+}
+
+
+void GafPathsDialog::highlightAllPaths()
+{
+    if (m_visibleRows.isEmpty())
     {
-        int row = selectedRows[i];
-        if (row < 0 || row >= m_alignments.size())
+        QMessageBox::information(this, "No paths to highlight", "No paths are visible with the current filters.");
+        return;
+    }
+
+    QList<int> allRows;
+    for (int i = 0; i < m_visibleRows.size(); ++i)
+        allRows << i;
+
+    highlightPathsForRows(allRows);
+}
+
+
+void GafPathsDialog::highlightPathsForRows(const QList<int> &rows)
+{
+    g_memory->gafPathDialogIsVisible = true;
+    g_memory->queryPaths.clear();
+
+    g_graphicsView->scene()->blockSignals(true);
+    g_graphicsView->scene()->clearSelection();
+
+    QStringList nodesNotFound;
+
+    for (int i = 0; i < rows.size(); ++i)
+    {
+        int row = rows[i];
+        int alignmentIndex = alignmentIndexForRow(row);
+        if (alignmentIndex < 0 || alignmentIndex >= m_alignments.size())
             continue;
 
-        const GafAlignment &alignment = m_alignments[row];
+        const GafAlignment &alignment = m_alignments[alignmentIndex];
         g_memory->queryPaths.push_back(alignment.path);
 
         QList<DeBruijnNode *> nodes = alignment.path.getNodes();
@@ -249,4 +304,57 @@ void GafPathsDialog::highlightSelectedPaths()
     }
 
     emit highlightRequested();
+}
+
+
+void GafPathsDialog::filterByMapq()
+{
+    m_currentMapqThreshold = m_mapqFilterSpinBox->value();
+    applyMapqFilter();
+}
+
+
+void GafPathsDialog::resetMapqFilter()
+{
+    m_currentMapqThreshold = 0;
+    resetFilter();
+}
+
+
+void GafPathsDialog::applyMapqFilter()
+{
+    m_visibleRows.clear();
+    for (int i = 0; i < m_alignments.size(); ++i)
+    {
+        int mapq = m_alignments[i].mappingQuality;
+        if (m_currentMapqThreshold <= 0)
+            m_visibleRows << i; // show all when filter is zero
+        else if (mapq >= m_currentMapqThreshold)
+            m_visibleRows << i;
+    }
+
+    populateTable();
+    showWarnings();
+    updateButtons();
+}
+
+
+void GafPathsDialog::resetFilter()
+{
+    m_visibleRows.clear();
+    for (int i = 0; i < m_alignments.size(); ++i)
+        m_visibleRows << i;
+    m_currentMapqThreshold = 0;
+    m_mapqFilterSpinBox->setValue(0);
+    populateTable();
+    showWarnings();
+    updateButtons();
+}
+
+
+int GafPathsDialog::alignmentIndexForRow(int row) const
+{
+    if (row < 0 || row >= m_visibleRows.size())
+        return -1;
+    return m_visibleRows[row];
 }

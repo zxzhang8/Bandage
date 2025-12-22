@@ -25,6 +25,7 @@
 class QLabel;
 class QPushButton;
 class QTableWidget;
+class QSpinBox;
 
 class GafPathsDialog : public QWidget
 {
@@ -42,15 +43,28 @@ private:
     QStringList m_warnings;
     QTableWidget * m_table;
     QPushButton * m_highlightButton;
+    QPushButton * m_highlightAllButton;
+    QPushButton * m_filterButton;
+    QPushButton * m_resetFilterButton;
+    QSpinBox * m_mapqFilterSpinBox;
     QLabel * m_warningLabel;
+    QList<int> m_visibleRows;
+    int m_currentMapqThreshold;
 
     void populateTable();
+    void applyMapqFilter();
+    void resetFilter();
     void updateButtons();
     void showWarnings();
+    void highlightPathsForRows(const QList<int> &rows);
+    int alignmentIndexForRow(int row) const;
 
 private slots:
     void onSelectionChanged();
     void highlightSelectedPaths();
+    void highlightAllPaths();
+    void filterByMapq();
+    void resetMapqFilter();
 
 signals:
     void selectionChanged();

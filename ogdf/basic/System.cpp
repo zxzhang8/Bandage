@@ -93,7 +93,14 @@ static void __cpuid(int CPUInfo[4], int infoType)
 	CPUInfo[3] = d;
 }
 #endif
-
+#ifdef __MINGW64__
+static void __cpuid(int CPUInfo[4], int infoType)
+{
+    unsigned int a = 0;
+    unsigned int b = 0;
+    unsigned int c = 0;
+}
+#endif
 
 namespace ogdf {
 

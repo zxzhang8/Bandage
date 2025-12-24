@@ -21,6 +21,7 @@ TARGET = Bandage
 TEMPLATE = app
 VERSION = 0.9.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
+DEFINES -= UNICODE
 
 CONFIG += c++11
 
@@ -120,7 +121,8 @@ SOURCES += \
     ui/graphinfodialog.cpp \
     ui/tablewidgetitemname.cpp \
     ui/changenodedepthdialog.cpp \
-    ui/selectededgepathwidget.cpp
+    ui/selectededgepathwidget.cpp \
+    ui/nodesequencewidget.cpp
 
 HEADERS  += \
     program/settings.h \
@@ -178,6 +180,7 @@ HEADERS  += \
     program/gafparser.h \
     ui/gafpathsdialog.h \
     ui/selectededgepathwidget.h \
+    ui/nodesequencewidget.h \
     ogdf/basic/Graph.h \
     ogdf/basic/GraphAttributes.h \
     ogdf/energybased/FMMMLayout.h \

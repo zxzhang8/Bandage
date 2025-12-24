@@ -40,6 +40,7 @@ class Path;
 class BlastSearchDialog;
 class GafPathsDialog;
 class SelectedEdgePathWidget;
+class NodeSequenceWidget;
 class QDockWidget;
 
 namespace Ui {
@@ -72,6 +73,8 @@ private:
     GafPathsDialog * m_gafPathsWidget;
     int m_selectedEdgePathTabIndex;
     SelectedEdgePathWidget * m_selectedEdgePathWidget;
+    int m_nodeSequenceTabIndex;
+    NodeSequenceWidget * m_nodeSequenceWidget;
     bool m_alreadyShown;
 
     void cleanUp();
@@ -177,6 +180,7 @@ private slots:
     void changeNodeName();
     void changeNodeDepth();
     void openGraphInfoDialog();
+    void showNodeSequenceTab(DeBruijnNode * node);
 
 protected:
       void showEvent(QShowEvent *ev);

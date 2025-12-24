@@ -23,7 +23,9 @@
 #include <QFont>
 #include "graphicsviewzoom.h"
 #include <qmath.h>
+#include <QMenu>
 #include <QMessageBox>
+#include <QContextMenuEvent>
 #include <math.h>
 #include "../graph/graphicsitemnode.h"
 
@@ -90,6 +92,20 @@ void MyGraphicsView::mouseDoubleClickEvent(QMouseEvent * event)
     GraphicsItemNode * graphicsItemNode = dynamic_cast<GraphicsItemNode *>(item);
     if (graphicsItemNode != 0)
         emit doubleClickedNode(graphicsItemNode->m_deBruijnNode);
+}
+
+void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
+{
+    QGraphicsItem * item = itemAt(event->pos());
+    GraphicsItemNode * graphicsItemNode = dynamic_cast<GraphicsItemNode *>(item);
+    if (graphicsItemNode == 0 || !graphicsItemNode->isSelected())
+        return;
+
+    QMenu menu(this);
+    QAction * showSequenceAction = menu.addAction("Show node sequence");
+    QAction * selectedAction = menu.exec(event->globalPos());
+    if (selectedAction == showSequenceAction)
+        emit showNodeSequenceRequested(graphicsItemNode->m_deBruijnNode);
 }
 
 //Adapted from:

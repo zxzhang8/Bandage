@@ -28,6 +28,7 @@
 #include <QMessageBox>
 #include <math.h>
 #include "../graph/graphicsitemnode.h"
+#include "../graph/debruijnnode.h"
 
 MyGraphicsView::MyGraphicsView(QObject * /*parent*/) :
     QGraphicsView(), m_rotation(0.0)
@@ -107,6 +108,9 @@ void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
     if (graphicsItemNode != 0)
     {
         QMenu menu(this);
+        QAction * titleAction = menu.addAction(graphicsItemNode->m_deBruijnNode->getName());
+        titleAction->setEnabled(false);
+        menu.addSeparator();
         QAction * showSequenceAction = menu.addAction("Show node sequence");
         QAction * selectedAction = menu.exec(event->globalPos());
         if (selectedAction == showSequenceAction)

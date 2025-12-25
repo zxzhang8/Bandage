@@ -27,7 +27,7 @@
 #include <vector>
 #include <QLineEdit>
 #include <QRectF>
-#include <QList>
+#include <QSet>
 #include "../program/globals.h"
 #include <QThread>
 #include "../ogdf/energybased/FMMMLayout.h"
@@ -42,6 +42,7 @@ class BlastSearchDialog;
 class GafPathsDialog;
 class SelectedEdgePathWidget;
 class NodeSequenceWidget;
+class SelectedNodesPathsWidget;
 class QDockWidget;
 
 namespace Ui {
@@ -74,7 +75,10 @@ private:
     GafPathsDialog * m_gafPathsWidget;
     int m_selectedEdgePathTabIndex;
     SelectedEdgePathWidget * m_selectedEdgePathWidget;
-    QList<NodeSequenceWidget *> m_nodeSequenceWidgets;
+    int m_nodeSequenceTabIndex;
+    NodeSequenceWidget * m_nodeSequenceWidget;
+    int m_selectedNodesPathsTabIndex;
+    SelectedNodesPathsWidget * m_selectedNodesPathsWidget;
     bool m_alreadyShown;
 
     void cleanUp();
@@ -103,8 +107,16 @@ private:
     QString convertGraphFileTypeToString(GraphFileType graphFileType);
     void setSelectedNodesWidgetsVisibility(bool visible);
     void setSelectedEdgesWidgetsVisibility(bool visible);
+    void updateSelectedNodesPathControls(const std::vector<DeBruijnNode *> &selectedNodes);
     Path makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const;
     void showSelectedEdgePathTab(const Path &path);
+    QList<Path> findPathsWithinSelection(DeBruijnNode * startNode,
+                                         DeBruijnNode * endNode,
+                                         const QSet<DeBruijnNode *> &allowedNodes,
+                                         int maxNodes,
+                                         int maxPaths,
+                                         bool * hitLimit) const;
+    void showSelectedNodesPathsTab(const QList<Path> &paths);
     void setStartingNodesWidgetVisibility(bool visible);
     void setNodeDistanceWidgetVisibility(bool visible);
     void setDepthRangeWidgetVisibility(bool visible);
@@ -165,7 +177,10 @@ private slots:
     void openPathSpecifyDialog();
     void openGafPathsDialog();
     void focusOnGafSelection();
+    void focusOnSelectedNodesPaths();
     void generateSequenceFromSelectedEdges();
+    void findPathsInSelectedNodes();
+    void reverseSelectedNodesPathEndpoints();
     void nodeWidthChanged();
     void saveEntireGraphToFasta();
     void saveEntireGraphToFastaOnlyPositiveNodes();

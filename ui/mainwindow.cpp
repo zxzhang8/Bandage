@@ -70,9 +70,13 @@
 #include "graphinfodialog.h"
 #include "selectededgepathwidget.h"
 #include "nodesequencewidget.h"
+#include "selectednodespathswidget.h"
 #include <QHash>
 #include <QQueue>
 #include <QSet>
+#include <QSignalBlocker>
+#include <functional>
+#include <QCompleter>
 
 MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     QMainWindow(0),
@@ -80,7 +84,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     m_fileToLoadOnStartup(fileToLoadOnStartup), m_drawGraphAfterLoad(drawGraphAfterLoad),
     m_uiState(NO_GRAPH_LOADED), m_blastSearchDialog(0), m_tabWidget(0), m_gafTabIndex(-1), m_gafPathsWidget(0),
     m_selectedEdgePathTabIndex(-1), m_selectedEdgePathWidget(0), m_nodeSequenceTabIndex(-1),
-    m_nodeSequenceWidget(0), m_alreadyShown(false)
+    m_nodeSequenceWidget(0), m_selectedNodesPathsTabIndex(-1), m_selectedNodesPathsWidget(0), m_alreadyShown(false)
 {
     ui->setupUi(this);
 
@@ -196,6 +200,8 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->startingNodesExactMatchRadioButton, SIGNAL(toggled(bool)), this, SLOT(startingNodesExactMatchChanged()));
     connect(ui->actionSpecify_exact_path_for_copy_save, SIGNAL(triggered()), this, SLOT(openPathSpecifyDialog()));
     connect(ui->selectedEdgesGenSeqButton, SIGNAL(clicked()), this, SLOT(generateSequenceFromSelectedEdges()));
+    connect(ui->selectedNodesPathReverseButton, SIGNAL(clicked()), this, SLOT(reverseSelectedNodesPathEndpoints()));
+    connect(ui->selectedNodesFindPathsButton, SIGNAL(clicked()), this, SLOT(findPathsInSelectedNodes()));
     connect(ui->nodeWidthSpinBox, SIGNAL(valueChanged(double)), this, SLOT(nodeWidthChanged()));
     connect(g_graphicsView, SIGNAL(copySelectedSequencesToClipboard()), this, SLOT(copySelectedSequencesToClipboard()));
     connect(g_graphicsView, SIGNAL(saveSelectedSequencesToFile()), this, SLOT(saveSelectedSequencesToFile()));
@@ -284,6 +290,15 @@ void MainWindow::cleanUp()
         m_nodeSequenceWidget = 0;
     }
 
+    if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
+        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
+        delete tab;
+        m_selectedNodesPathsTabIndex = -1;
+        m_selectedNodesPathsWidget = 0;
+    }
+
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
     {
         QWidget * tab = m_tabWidget->widget(m_gafTabIndex);
@@ -293,15 +308,6 @@ void MainWindow::cleanUp()
         m_gafPathsWidget = 0;
     }
 
-    for (int i = m_nodeSequenceWidgets.size() - 1; i >= 0; --i)
-    {
-        NodeSequenceWidget * widget = m_nodeSequenceWidgets[i];
-        int index = m_tabWidget->indexOf(widget);
-        if (index != -1)
-            m_tabWidget->removeTab(index);
-        delete widget;
-    }
-    m_nodeSequenceWidgets.clear();
 
     g_blastSearch->cleanUp();
     g_assemblyGraph->cleanUp();
@@ -333,6 +339,15 @@ void MainWindow::cleanUp()
         delete tab;
         m_nodeSequenceTabIndex = -1;
         m_nodeSequenceWidget = 0;
+    }
+
+    if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
+        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
+        delete tab;
+        m_selectedNodesPathsTabIndex = -1;
+        m_selectedNodesPathsWidget = 0;
     }
 
     if (m_gafTabIndex != -1 && m_tabWidget != 0)
@@ -463,6 +478,14 @@ void MainWindow::focusOnGafSelection()
     zoomToSelection();
 }
 
+void MainWindow::focusOnSelectedNodesPaths()
+{
+    if (m_tabWidget != 0 && m_tabWidget->count() > 0)
+        m_tabWidget->setCurrentIndex(0);
+
+    zoomToSelection();
+}
+
 
 void MainWindow::loadGraph(QString fullFileName)
 {
@@ -492,6 +515,15 @@ void MainWindow::loadGraph(QString fullFileName)
             m_nodeSequenceWidget = 0;
         }
 
+        if (m_selectedNodesPathsTabIndex != -1 && m_tabWidget != 0)
+        {
+            QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
+            m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
+            delete tab;
+            m_selectedNodesPathsTabIndex = -1;
+            m_selectedNodesPathsWidget = 0;
+        }
+
         // Reset any loaded GAF paths because a new graph is being loaded.
         if (m_gafTabIndex != -1 && m_tabWidget != 0)
         {
@@ -502,6 +534,7 @@ void MainWindow::loadGraph(QString fullFileName)
             m_gafPathsWidget = 0;
         }
         g_memory->gafPathDialogIsVisible = false;
+        g_memory->selectedPathsDialogIsVisible = false;
         g_memory->queryPaths.clear();
         ui->gafFileLabel->setText("Not loaded");
 
@@ -693,6 +726,30 @@ void MainWindow::showSelectedEdgePathTab(const Path &path)
     m_tabWidget->setCurrentIndex(m_selectedEdgePathTabIndex);
 }
 
+void MainWindow::showSelectedNodesPathsTab(const QList<Path> &paths)
+{
+    if (m_tabWidget == 0)
+        return;
+
+    if (m_selectedNodesPathsTabIndex != -1)
+    {
+        QWidget * tab = m_tabWidget->widget(m_selectedNodesPathsTabIndex);
+        m_tabWidget->removeTab(m_selectedNodesPathsTabIndex);
+        delete tab;
+        m_selectedNodesPathsWidget = 0;
+        m_selectedNodesPathsTabIndex = -1;
+    }
+
+    m_selectedNodesPathsWidget = new SelectedNodesPathsWidget(m_tabWidget, paths);
+    m_selectedNodesPathsTabIndex = m_tabWidget->addTab(m_selectedNodesPathsWidget, "Selected node paths");
+
+    connect(m_selectedNodesPathsWidget, SIGNAL(selectionChanged()), g_graphicsView->viewport(), SLOT(update()));
+    connect(m_selectedNodesPathsWidget, SIGNAL(selectionChanged()), this, SLOT(selectionChanged()));
+    connect(m_selectedNodesPathsWidget, SIGNAL(highlightRequested()), this, SLOT(focusOnSelectedNodesPaths()));
+
+    m_tabWidget->setCurrentIndex(m_selectedNodesPathsTabIndex);
+}
+
 void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
 {
     if (m_tabWidget == 0 || node == 0)
@@ -711,6 +768,141 @@ void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
     QString tabTitle = "Node " + node->getName();
     m_nodeSequenceTabIndex = m_tabWidget->addTab(m_nodeSequenceWidget, tabTitle);
     m_tabWidget->setCurrentIndex(m_nodeSequenceTabIndex);
+}
+
+void MainWindow::findPathsInSelectedNodes()
+{
+    std::vector<DeBruijnNode *> selectedNodes = m_scene->getSelectedNodes();
+    QSet<QString> baseNameSet;
+    QList<QString> baseNames;
+    for (size_t i = 0; i < selectedNodes.size(); ++i)
+    {
+        QString baseName = selectedNodes[i]->getNameWithoutSign();
+        if (!baseNameSet.contains(baseName))
+        {
+            baseNameSet.insert(baseName);
+            baseNames.push_back(baseName);
+        }
+    }
+
+    if (baseNames.size() < 2)
+    {
+        QMessageBox::information(this, "Not enough nodes",
+                                 "Select at least two nodes in the graph before finding paths.");
+        return;
+    }
+
+    QString startBase = ui->selectedNodesPathStartComboBox->currentText().trimmed();
+    QString endBase = ui->selectedNodesPathEndComboBox->currentText().trimmed();
+
+    if (startBase.isEmpty() || endBase.isEmpty())
+    {
+        QMessageBox::information(this, "Invalid selection", "Choose a start and end node.");
+        return;
+    }
+
+    if (startBase == endBase)
+    {
+        QMessageBox::information(this, "Invalid selection", "Start and end nodes must be different.");
+        return;
+    }
+
+    QSet<DeBruijnNode *> allowedNodes;
+    for (int i = 0; i < baseNames.size(); ++i)
+    {
+        const QString &baseName = baseNames[i];
+        QString posName = baseName + "+";
+        QString negName = baseName + "-";
+        if (g_assemblyGraph->m_deBruijnGraphNodes.contains(posName))
+            allowedNodes.insert(g_assemblyGraph->m_deBruijnGraphNodes[posName]);
+        if (g_assemblyGraph->m_deBruijnGraphNodes.contains(negName))
+            allowedNodes.insert(g_assemblyGraph->m_deBruijnGraphNodes[negName]);
+    }
+
+    QList<DeBruijnNode *> startNodes;
+    QList<DeBruijnNode *> endNodes;
+    QString startPos = startBase + "+";
+    QString startNeg = startBase + "-";
+    QString endPos = endBase + "+";
+    QString endNeg = endBase + "-";
+
+    if (g_assemblyGraph->m_deBruijnGraphNodes.contains(startPos))
+        startNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes[startPos]);
+    if (g_assemblyGraph->m_deBruijnGraphNodes.contains(startNeg))
+        startNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes[startNeg]);
+    if (g_assemblyGraph->m_deBruijnGraphNodes.contains(endPos))
+        endNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes[endPos]);
+    if (g_assemblyGraph->m_deBruijnGraphNodes.contains(endNeg))
+        endNodes.push_back(g_assemblyGraph->m_deBruijnGraphNodes[endNeg]);
+
+    if (startNodes.isEmpty() || endNodes.isEmpty())
+    {
+        QMessageBox::information(this, "Invalid selection", "Start or end node is missing from the graph.");
+        return;
+    }
+
+    const int maxNodes = std::max<int>(2, ui->selectedNodesPathMaxNodesSpinBox->value());
+    const int maxPaths = 1000;
+    bool hitLimit = false;
+    QList<Path> paths;
+    QSet<QString> seenPaths;
+
+    for (int s = 0; s < startNodes.size(); ++s)
+    {
+        for (int e = 0; e < endNodes.size(); ++e)
+        {
+            int remaining = maxPaths - paths.size();
+            if (remaining <= 0)
+            {
+                hitLimit = true;
+                break;
+            }
+
+            bool localLimit = false;
+            QList<Path> newPaths = findPathsWithinSelection(startNodes[s], endNodes[e], allowedNodes,
+                                                            maxNodes, remaining, &localLimit);
+            for (int i = 0; i < newPaths.size(); ++i)
+            {
+                QString key = newPaths[i].getString(true);
+                if (!seenPaths.contains(key))
+                {
+                    seenPaths.insert(key);
+                    paths.push_back(newPaths[i]);
+                }
+            }
+
+            if (localLimit)
+                hitLimit = true;
+        }
+
+        if (hitLimit && paths.size() >= maxPaths)
+            break;
+    }
+
+    if (paths.isEmpty())
+    {
+        QMessageBox::information(this, "No paths found",
+                                 "No paths connect the selected start and end nodes within the selected set.");
+        return;
+    }
+
+    showSelectedNodesPathsTab(paths);
+
+    if (hitLimit)
+    {
+        QMessageBox::information(this, "Path limit reached",
+                                 "The maximum number of paths was reached. Showing the first "
+                                 + QString::number(maxPaths) + " paths.");
+    }
+}
+
+void MainWindow::reverseSelectedNodesPathEndpoints()
+{
+    QString startText = ui->selectedNodesPathStartComboBox->currentText();
+    QString endText = ui->selectedNodesPathEndComboBox->currentText();
+
+    ui->selectedNodesPathStartComboBox->setCurrentText(endText);
+    ui->selectedNodesPathEndComboBox->setCurrentText(startText);
 }
 
 
@@ -784,6 +976,8 @@ void MainWindow::selectionChanged()
 
         ui->selectedEdgesTextEdit->setPlainText(getSelectedEdgeListText());
     }
+
+    updateSelectedNodesPathControls(selectedNodes);
 }
 
 
@@ -837,6 +1031,135 @@ QString MainWindow::getSelectedEdgeListText()
     return edgeText;
 }
 
+void MainWindow::updateSelectedNodesPathControls(const std::vector<DeBruijnNode *> &selectedNodes)
+{
+    QSignalBlocker blockStart(ui->selectedNodesPathStartComboBox);
+    QSignalBlocker blockEnd(ui->selectedNodesPathEndComboBox);
+    QSignalBlocker blockMaxNodes(ui->selectedNodesPathMaxNodesSpinBox);
+
+    QString currentStartName = ui->selectedNodesPathStartComboBox->currentData().toString();
+    QString currentEndName = ui->selectedNodesPathEndComboBox->currentData().toString();
+
+    ui->selectedNodesPathStartComboBox->clear();
+    ui->selectedNodesPathEndComboBox->clear();
+
+    QList<QString> baseNames;
+    QSet<QString> seenNames;
+    for (size_t i = 0; i < selectedNodes.size(); ++i)
+    {
+        QString baseName = selectedNodes[i]->getNameWithoutSign();
+        if (!seenNames.contains(baseName))
+        {
+            seenNames.insert(baseName);
+            baseNames.push_back(baseName);
+        }
+    }
+
+    bool enable = baseNames.size() >= 2;
+    ui->selectedNodesPathStartComboBox->setEnabled(enable);
+    ui->selectedNodesPathEndComboBox->setEnabled(enable);
+    ui->selectedNodesFindPathsButton->setEnabled(enable);
+    ui->selectedNodesPathReverseButton->setEnabled(enable);
+    ui->selectedNodesPathMaxNodesSpinBox->setEnabled(enable);
+
+    if (!enable)
+        return;
+
+    ui->selectedNodesPathMaxNodesSpinBox->setRange(g_settings->maxQueryPathNodes.min,
+                                                   g_settings->maxQueryPathNodes.max);
+    if (ui->selectedNodesPathMaxNodesSpinBox->value() < g_settings->maxQueryPathNodes.min)
+        ui->selectedNodesPathMaxNodesSpinBox->setValue(g_settings->maxQueryPathNodes.val);
+
+    for (int i = 0; i < baseNames.size(); ++i)
+    {
+        const QString &baseName = baseNames[i];
+        ui->selectedNodesPathStartComboBox->addItem(baseName, baseName);
+        ui->selectedNodesPathEndComboBox->addItem(baseName, baseName);
+    }
+
+    int startIndex = ui->selectedNodesPathStartComboBox->findData(currentStartName);
+    int endIndex = ui->selectedNodesPathEndComboBox->findData(currentEndName);
+
+    if (startIndex >= 0)
+        ui->selectedNodesPathStartComboBox->setCurrentIndex(startIndex);
+    else
+        ui->selectedNodesPathStartComboBox->setCurrentIndex(0);
+
+    if (endIndex >= 0)
+        ui->selectedNodesPathEndComboBox->setCurrentIndex(endIndex);
+    else if (baseNames.size() > 1)
+        ui->selectedNodesPathEndComboBox->setCurrentIndex(1);
+
+    QCompleter * startCompleter = ui->selectedNodesPathStartComboBox->completer();
+    if (startCompleter != 0)
+        startCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+    QCompleter * endCompleter = ui->selectedNodesPathEndComboBox->completer();
+    if (endCompleter != 0)
+        endCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+}
+
+QList<Path> MainWindow::findPathsWithinSelection(DeBruijnNode * startNode,
+                                                 DeBruijnNode * endNode,
+                                                 const QSet<DeBruijnNode *> &allowedNodes,
+                                                 int maxNodes,
+                                                 int maxPaths,
+                                                 bool * hitLimit) const
+{
+    QList<Path> results;
+    if (hitLimit != 0)
+        *hitLimit = false;
+    if (startNode == 0 || endNode == 0)
+        return results;
+    if (maxPaths <= 0)
+        return results;
+
+    QList<DeBruijnNode *> currentNodes;
+    QSet<DeBruijnNode *> visited;
+
+    currentNodes.append(startNode);
+    visited.insert(startNode);
+
+    std::function<void(DeBruijnNode *)> dfs = [&](DeBruijnNode * node)
+    {
+        if (hitLimit != 0 && *hitLimit)
+            return;
+
+        if (currentNodes.size() > maxNodes)
+            return;
+
+        if (node == endNode)
+        {
+            Path path = Path::makeFromOrderedNodes(currentNodes, false);
+            if (!path.isEmpty())
+                results.push_back(path);
+            if (results.size() >= maxPaths && hitLimit != 0)
+                *hitLimit = true;
+            return;
+        }
+
+        std::vector<DeBruijnEdge *> edges = node->getLeavingEdges();
+        for (size_t i = 0; i < edges.size(); ++i)
+        {
+            DeBruijnNode * nextNode = edges[i]->getEndingNode();
+            if (!allowedNodes.contains(nextNode))
+                continue;
+            if (visited.contains(nextNode))
+                continue;
+
+            visited.insert(nextNode);
+            currentNodes.append(nextNode);
+            dfs(nextNode);
+            currentNodes.removeLast();
+            visited.remove(nextNode);
+
+            if (hitLimit != 0 && *hitLimit)
+                return;
+        }
+    };
+
+    dfs(startNode);
+    return results;
+}
 
 Path MainWindow::makePathFromSelectedEdges(QString * errorMessage, QStringList * errorDetails) const
 {
@@ -3054,16 +3377,4 @@ void MainWindow::openGraphInfoDialog()
 {
     GraphInfoDialog graphInfoDialog(this);
     graphInfoDialog.exec();
-}
-
-void MainWindow::showNodeSequenceTab(DeBruijnNode * node)
-{
-    if (node == 0 || m_tabWidget == 0)
-        return;
-
-    NodeSequenceWidget * widget = new NodeSequenceWidget(m_tabWidget, node);
-    QString tabTitle = "Sequence " + node->getName();
-    int tabIndex = m_tabWidget->addTab(widget, tabTitle);
-    m_tabWidget->setCurrentIndex(tabIndex);
-    m_nodeSequenceWidgets.append(widget);
 }

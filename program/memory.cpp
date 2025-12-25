@@ -29,6 +29,7 @@ Memory::Memory()
     pathDialogIsVisible = false;
     queryPathDialogIsVisible = false;
     gafPathDialogIsVisible = false;
+    selectedPathsDialogIsVisible = false;
 
     userSpecifiedPath = Path();
     userSpecifiedPathString = "";
@@ -54,6 +55,7 @@ void Memory::clearGraphSpecificMemory()
     queryPaths.clear();
     queryPathDialogIsVisible = false;
     gafPathDialogIsVisible = false;
+    selectedPathsDialogIsVisible = false;
 
     distanceSearchResults.clear();
     distancePathSearchQuery1 = "";

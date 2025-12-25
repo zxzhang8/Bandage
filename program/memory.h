@@ -38,6 +38,7 @@ public:
     bool pathDialogIsVisible;
     bool queryPathDialogIsVisible;
     bool gafPathDialogIsVisible;
+    bool selectedPathsDialogIsVisible;
 
     //These store the user input in the 'Specify exact path...' dialog so it is
     //retained between uses.

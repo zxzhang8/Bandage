@@ -15,76 +15,40 @@
 //You should have received a copy of the GNU General Public License
 //along with Bandage.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef GAFPATHSDIALOG_H
-#define GAFPATHSDIALOG_H
+#ifndef SELECTEDNODESPATHSWIDGET_H
+#define SELECTEDNODESPATHSWIDGET_H
 
 #include <QList>
-#include <QTableWidget>
 #include <QWidget>
-#include "../program/gafparser.h"
+#include "../graph/path.h"
 
 class QLabel;
 class QPushButton;
-class QSpinBox;
-class QLineEdit;
-class QModelIndex;
+class QTableWidget;
 
-class GafPathsTable : public QTableWidget
+class SelectedNodesPathsWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit GafPathsTable(QWidget *parent = 0);
-    void setPathColumn(int col);
-
-protected:
-    void scrollTo(const QModelIndex &index,
-                  QAbstractItemView::ScrollHint hint = QAbstractItemView::EnsureVisible) override;
+    explicit SelectedNodesPathsWidget(QWidget * parent, const QList<Path> &paths);
+    ~SelectedNodesPathsWidget();
 
 private:
-    int m_pathColumn;
-};
-
-class GafPathsDialog : public QWidget
-{
-    Q_OBJECT
-
-public:
-    explicit GafPathsDialog(QWidget * parent,
-                            const QString &fileName,
-                            const GafParseResult &parseResult);
-    ~GafPathsDialog();
-
-private:
-    QString m_fileName;
-    QList<GafAlignment> m_alignments;
-    QStringList m_warnings;
+    QList<Path> m_paths;
+    QLabel * m_infoLabel;
     QTableWidget * m_table;
     QPushButton * m_highlightButton;
     QPushButton * m_highlightAllButton;
-    QPushButton * m_filterButton;
-    QPushButton * m_resetFilterButton;
-    QSpinBox * m_mapqFilterSpinBox;
-    QLineEdit * m_nodeFilterLineEdit;
-    QLabel * m_warningLabel;
-    QList<int> m_visibleRows;
-    int m_currentMapqThreshold;
-    QString m_nodeFilter;
 
     void populateTable();
-    void applyMapqFilter();
-    void resetFilter();
     void updateButtons();
-    void showWarnings();
     void highlightPathsForRows(const QList<int> &rows);
-    int alignmentIndexForRow(int row) const;
 
 private slots:
     void onSelectionChanged();
     void highlightSelectedPaths();
     void highlightAllPaths();
-    void filterByMapq();
-    void resetMapqFilter();
 
 signals:
     void selectionChanged();
@@ -95,4 +59,4 @@ protected:
     void showEvent(QShowEvent * event) override;
 };
 
-#endif // GAFPATHSDIALOG_H
+#endif // SELECTEDNODESPATHSWIDGET_H

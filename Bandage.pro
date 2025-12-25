@@ -122,7 +122,8 @@ SOURCES += \
     ui/tablewidgetitemname.cpp \
     ui/changenodedepthdialog.cpp \
     ui/selectededgepathwidget.cpp \
-    ui/nodesequencewidget.cpp
+    ui/nodesequencewidget.cpp \
+    ui/selectednodespathswidget.cpp
 
 HEADERS  += \
     program/settings.h \
@@ -181,6 +182,7 @@ HEADERS  += \
     ui/gafpathsdialog.h \
     ui/selectededgepathwidget.h \
     ui/nodesequencewidget.h \
+    ui/selectednodespathswidget.h \
     ogdf/basic/Graph.h \
     ogdf/basic/GraphAttributes.h \
     ogdf/energybased/FMMMLayout.h \

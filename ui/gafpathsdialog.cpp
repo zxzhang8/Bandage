@@ -50,7 +50,7 @@ void GafPathsTable::setPathColumn(int col)
     m_pathColumn = col;
 }
 
-void GafPathsTable::scrollTo(const QModelIndex &index, ScrollHint hint)
+void GafPathsTable::scrollTo(const QModelIndex &index, QAbstractItemView::ScrollHint hint)
 {
     if (index.column() == m_pathColumn)
     {

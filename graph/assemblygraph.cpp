@@ -624,8 +624,9 @@ void AssemblyGraph::buildDeBruijnGraphFromGfa(QString fullFileName, bool *unsupp
                 QByteArray sequence = lineParts.at(2).toLocal8Bit();
 
                 //Get the tags.
-                bool kcFound = false, rcFound = false, fcFound = false, dpFound = false;
+                bool kcFound = false, rcFound = false, fcFound = false, dpFound = false, rdFound = false;
                 double kc = 0.0, rc = 0.0, fc = 0.0, dp = 0.0;
+                long long rd = 0;
                 int ln = 0;
                 QString lb, l2;
                 QColor cl, c2;
@@ -652,6 +653,10 @@ void AssemblyGraph::buildDeBruijnGraphFromGfa(QString fullFileName, bool *unsupp
                     if (tag == "DP") {
                         dpFound = true;
                         dp = valString.toDouble();
+                    }
+                    if (tag == "RD") {
+                        rdFound = true;
+                        rd = valString.toLongLong();
                     }
                     if (tag == "LN")
                         ln = valString.toInt();
@@ -739,6 +744,8 @@ void AssemblyGraph::buildDeBruijnGraphFromGfa(QString fullFileName, bool *unsupp
                 }
 
                 DeBruijnNode * node = new DeBruijnNode(nodeName, nodeDepth, sequence, length);
+                if (rdFound)
+                    node->setReadSupportCount(rd);
                 m_deBruijnGraphNodes.insert(nodeName, node);
             }
 
@@ -1079,6 +1086,7 @@ void AssemblyGraph::makeReverseComplementNodeIfNecessary(DeBruijnNode * node)
         DeBruijnNode * newNode = new DeBruijnNode(reverseComplementName, node->getDepth(),
                                                   getReverseComplement(nodeSequence),
                                                   node->getLength());
+        newNode->setReadSupportCount(node->getReadSupportCount());
         m_deBruijnGraphNodes.insert(reverseComplementName, newNode);
     }
 }

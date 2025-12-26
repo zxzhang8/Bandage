@@ -45,6 +45,8 @@ public:
     QString getNameWithoutSign() const {return m_name.left(m_name.length() - 1);}
     QString getSign() const {if (m_name.length() > 0) return m_name.right(1); else return "+";}
     double getDepth() const {return m_depth;}
+    long long getReadSupportCount() const {return m_readSupportCount;}
+    bool hasReadSupportCount() const {return m_readSupportCount >= 0;}
     double getDepthRelativeToMeanDrawnDepth() const {return m_depthRelativeToMeanDrawnDepth;}
     QByteArray getSequence() const;
     int getLength() const {return m_length;}
@@ -125,11 +127,13 @@ public:
     void setCsvData(QStringList csvData) {m_csvData = csvData;}
     void clearCsvData() {m_csvData.clear();}
     void setDepth(double newDepth) {m_depth = newDepth;}
+    void setReadSupportCount(long long newCount) {m_readSupportCount = newCount;}
     void setName(QString newName) {m_name = newName;}
 
 private:
     QString m_name;
     double m_depth;
+    long long m_readSupportCount;
     double m_depthRelativeToMeanDrawnDepth;
     QByteArray m_sequence;
     int m_length;

@@ -34,6 +34,7 @@
 DeBruijnNode::DeBruijnNode(QString name, double depth, QByteArray sequence, int length) :
     m_name(name),
     m_depth(depth),
+    m_readSupportCount(-1),
     m_depthRelativeToMeanDrawnDepth(1.0),
     m_sequence(sequence),
     m_length(sequence.length()),

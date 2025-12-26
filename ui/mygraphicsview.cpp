@@ -110,6 +110,13 @@ void MyGraphicsView::contextMenuEvent(QContextMenuEvent * event)
         QMenu menu(this);
         QAction * titleAction = menu.addAction(graphicsItemNode->m_deBruijnNode->getName());
         titleAction->setEnabled(false);
+        QString readSupportText = "Read support: ";
+        if (graphicsItemNode->m_deBruijnNode->hasReadSupportCount())
+            readSupportText += formatIntForDisplay(graphicsItemNode->m_deBruijnNode->getReadSupportCount());
+        else
+            readSupportText += "N/A";
+        QAction * readSupportAction = menu.addAction(readSupportText);
+        readSupportAction->setEnabled(false);
         QAction * startAction = menu.addAction("Set start");
         QAction * endAction = menu.addAction("Set end");
         menu.addSeparator();

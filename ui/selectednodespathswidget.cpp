@@ -53,8 +53,8 @@ SelectedNodesPathsWidget::SelectedNodesPathsWidget(QWidget * parent, const QList
     m_infoLabel->setWordWrap(true);
     layout->addWidget(m_infoLabel);
 
-    m_table->setColumnCount(3);
-    m_table->setHorizontalHeaderLabels(QStringList() << "Nodes" << "Length\n(bp)" << "Path");
+    m_table->setColumnCount(4);
+    m_table->setHorizontalHeaderLabels(QStringList() << "Nodes" << "Length\n(bp)" << "Read support\n(avg)" << "Path");
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -122,14 +122,34 @@ void SelectedNodesPathsWidget::populateTable()
         QString pathString = path.getString(true);
         QString length = formatIntForDisplay(path.getLength());
         QString nodeCount = QString::number(path.getNodeCount());
+        QString readSupportAverageText = "N/A";
+        QList<DeBruijnNode *> nodes = path.getNodes();
+        long long readSupportSum = 0;
+        int readSupportCount = 0;
+        for (int nodeIndex = 0; nodeIndex < nodes.size(); ++nodeIndex)
+        {
+            DeBruijnNode * node = nodes[nodeIndex];
+            if (node != 0 && node->hasReadSupportCount())
+            {
+                readSupportSum += node->getReadSupportCount();
+                ++readSupportCount;
+            }
+        }
+        if (readSupportCount > 0)
+        {
+            double readSupportAverage = double(readSupportSum) / double(readSupportCount);
+            readSupportAverageText = formatDoubleForDisplay(readSupportAverage, 2);
+        }
 
         QTableWidgetItem * nodesItem = new QTableWidgetItem(nodeCount);
         QTableWidgetItem * lengthItem = new QTableWidgetItem(length);
+        QTableWidgetItem * readSupportItem = new QTableWidgetItem(readSupportAverageText);
         QTableWidgetItem * pathItem = new QTableWidgetItem(pathString);
 
         m_table->setItem(row, 0, nodesItem);
         m_table->setItem(row, 1, lengthItem);
-        m_table->setItem(row, 2, pathItem);
+        m_table->setItem(row, 2, readSupportItem);
+        m_table->setItem(row, 3, pathItem);
     }
 
     m_table->resizeColumnsToContents();

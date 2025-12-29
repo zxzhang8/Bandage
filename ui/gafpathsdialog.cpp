@@ -18,6 +18,8 @@
 #include "gafpathsdialog.h"
 
 #include <QAbstractItemView>
+#include <algorithm>
+#include <limits>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QComboBox>
@@ -109,8 +111,7 @@ QVariant GafPathsModel::data(const QModelIndex &index, int role) const
         case 2: return a.strand;
         case 3: return (a.mappingQuality >= 0) ? QString::number(a.mappingQuality) : "";
         case 4: return QString::number(a.path.getNodeCount());
-        case 5: return a.bandagePathString;
-        case 6:
+        case 5:
         {
             if (a.queryStart >= 0 && a.queryEnd >= 0 && a.queryLength > 0)
                 return QString::number(a.queryStart) + "-" + QString::number(a.queryEnd) + " / " + QString::number(a.queryLength);
@@ -118,6 +119,7 @@ QVariant GafPathsModel::data(const QModelIndex &index, int role) const
                 return QString::number(a.queryStart) + "-" + QString::number(a.queryEnd);
             return "";
         }
+        case 6: return a.bandagePathString;
         default:
             return QVariant();
     }
@@ -137,8 +139,8 @@ QVariant GafPathsModel::headerData(int section, Qt::Orientation orientation, int
             case 2: return "Strand";
             case 3: return "MAPQ";
             case 4: return "Nodes";
-            case 5: return "Path";
-            case 6: return "Query range";
+            case 5: return "Query Range";
+            case 6: return "Path";
             default: return QVariant();
         }
     }
@@ -218,6 +220,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_prevPageButton(new QPushButton("Prev", this)),
     m_nextPageButton(new QPushButton("Next", this)),
     m_mapqFilterSpinBox(new QSpinBox(this)),
+    m_nodeCountFilterSpinBox(new QSpinBox(this)),
     m_nodeFilterLineEdit(new QLineEdit(this)),
     m_nodeFilterModeComboBox(new QComboBox(this)),
     m_pageSizeSpinBox(new QSpinBox(this)),
@@ -238,7 +241,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    static_cast<GafPathsTableView *>(m_table)->setPathColumn(5);
+    static_cast<GafPathsTableView *>(m_table)->setPathColumn(6);
     layout->addWidget(m_table);
 
     m_mapqFilterSpinBox->setRange(0, 1000);
@@ -246,6 +249,12 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_mapqFilterSpinBox->setPrefix("MAPQ ≥ ");
     m_mapqFilterSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
     m_mapqFilterSpinBox->setFixedWidth(120);
+
+    m_nodeCountFilterSpinBox->setRange(0, 1000000);
+    m_nodeCountFilterSpinBox->setValue(0);
+    m_nodeCountFilterSpinBox->setPrefix("Nodes ≥ ");
+    m_nodeCountFilterSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    m_nodeCountFilterSpinBox->setFixedWidth(120);
 
     m_nodeFilterLineEdit->setPlaceholderText("Node name(s)");
     m_nodeFilterLineEdit->setFixedWidth(200);
@@ -282,6 +291,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     buttonLayout->addWidget(m_nodeFilterLineEdit);
     buttonLayout->addWidget(m_nodeFilterModeComboBox);
     buttonLayout->addWidget(m_mapqFilterSpinBox);
+    buttonLayout->addWidget(m_nodeCountFilterSpinBox);
     buttonLayout->addWidget(m_filterButton);
     buttonLayout->addWidget(m_resetFilterButton);
     buttonLayout->addStretch();
@@ -293,9 +303,12 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     m_visibleRows.clear();
     for (int i = 0; i < m_alignments.size(); ++i)
         m_visibleRows << i;
+    m_visibleRowsBase = m_visibleRows;
     m_currentMapqThreshold = 0;
+    m_currentNodeCountThreshold = 0;
     m_nodeFilters.clear();
     m_nodeFilterMatchAll = false;
+    m_queryRangeSorted = false;
 
     populateTable();
     showWarnings();
@@ -311,6 +324,7 @@ GafPathsDialog::GafPathsDialog(QWidget * parent,
     connect(m_nextPageButton, SIGNAL(clicked()), this, SLOT(goToNextPage()));
     connect(m_pageSizeSpinBox, SIGNAL(valueChanged(int)), this, SLOT(pageSizeChanged(int)));
     connect(m_pageCurrentLineEdit, SIGNAL(returnPressed()), this, SLOT(pageCurrentEdited()));
+    connect(m_table->horizontalHeader(), SIGNAL(sectionClicked(int)), this, SLOT(handleHeaderClicked(int)));
 }
 
 
@@ -383,6 +397,7 @@ void GafPathsDialog::updateButtons()
     m_filterButton->setEnabled(true);
     m_resetFilterButton->setEnabled(m_model->totalRows() != m_alignments.size() ||
                                     m_currentMapqThreshold != 0 ||
+                                    m_currentNodeCountThreshold != 0 ||
                                     !m_nodeFilters.isEmpty());
 }
 
@@ -480,6 +495,7 @@ void GafPathsDialog::highlightPathsForAlignments(const QList<int> &alignmentIndi
 void GafPathsDialog::filterByMapq()
 {
     m_currentMapqThreshold = m_mapqFilterSpinBox->value();
+    m_currentNodeCountThreshold = m_nodeCountFilterSpinBox->value();
     QString rawFilter = m_nodeFilterLineEdit->text().trimmed();
     m_nodeFilters = rawFilter.split(QRegularExpression("[,\\s]+"), Qt::SkipEmptyParts);
     m_nodeFilterMatchAll = (m_nodeFilterModeComboBox->currentIndex() == 1);
@@ -490,6 +506,7 @@ void GafPathsDialog::filterByMapq()
 void GafPathsDialog::resetMapqFilter()
 {
     m_currentMapqThreshold = 0;
+    m_currentNodeCountThreshold = 0;
     resetFilter();
 }
 
@@ -502,6 +519,11 @@ void GafPathsDialog::applyMapqFilter()
         int mapq = m_alignments[i].mappingQuality;
         bool mapqPass = (m_currentMapqThreshold <= 0 || mapq >= m_currentMapqThreshold);
         if (!mapqPass)
+            continue;
+
+        int nodeCount = m_alignments[i].path.getNodeCount();
+        bool nodeCountPass = (m_currentNodeCountThreshold <= 0 || nodeCount >= m_currentNodeCountThreshold);
+        if (!nodeCountPass)
             continue;
 
         if (m_nodeFilters.isEmpty())
@@ -555,6 +577,8 @@ void GafPathsDialog::applyMapqFilter()
             m_visibleRows << i;
     }
 
+    m_visibleRowsBase = m_visibleRows;
+    m_queryRangeSorted = false;
     populateTable();
     showWarnings();
     updateButtons();
@@ -566,11 +590,15 @@ void GafPathsDialog::resetFilter()
     m_visibleRows.clear();
     for (int i = 0; i < m_alignments.size(); ++i)
         m_visibleRows << i;
+    m_visibleRowsBase = m_visibleRows;
     m_currentMapqThreshold = 0;
     m_mapqFilterSpinBox->setValue(0);
+    m_currentNodeCountThreshold = 0;
+    m_nodeCountFilterSpinBox->setValue(0);
     m_nodeFilters.clear();
     m_nodeFilterLineEdit->setText("");
     m_nodeFilterModeComboBox->setCurrentIndex(0);
+    m_queryRangeSorted = false;
     populateTable();
     showWarnings();
     updateButtons();
@@ -624,5 +652,36 @@ void GafPathsDialog::pageCurrentEdited()
         return;
     m_model->setCurrentPage(value - 1);
     updatePaginationControls();
+    updateButtons();
+}
+
+void GafPathsDialog::handleHeaderClicked(int section)
+{
+    const int queryRangeColumn = 5;
+    if (section != queryRangeColumn)
+        return;
+
+    if (!m_queryRangeSorted)
+    {
+        std::stable_sort(m_visibleRows.begin(), m_visibleRows.end(),
+                         [this](int leftIndex, int rightIndex)
+                         {
+                             const GafAlignment &left = m_alignments[leftIndex];
+                             const GafAlignment &right = m_alignments[rightIndex];
+                             int leftStart = (left.queryStart >= 0) ? left.queryStart : std::numeric_limits<int>::max();
+                             int rightStart = (right.queryStart >= 0) ? right.queryStart : std::numeric_limits<int>::max();
+                             if (leftStart != rightStart)
+                                 return leftStart < rightStart;
+                             return left.lineNumber < right.lineNumber;
+                         });
+        m_queryRangeSorted = true;
+    }
+    else
+    {
+        m_visibleRows = m_visibleRowsBase;
+        m_queryRangeSorted = false;
+    }
+
+    populateTable();
     updateButtons();
 }

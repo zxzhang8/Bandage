@@ -102,6 +102,7 @@ private:
     QPushButton * m_prevPageButton;
     QPushButton * m_nextPageButton;
     QSpinBox * m_mapqFilterSpinBox;
+    QSpinBox * m_nodeCountFilterSpinBox;
     QLineEdit * m_nodeFilterLineEdit;
     QComboBox * m_nodeFilterModeComboBox;
     QSpinBox * m_pageSizeSpinBox;
@@ -109,9 +110,12 @@ private:
     QLabel * m_pageTotalLabel;
     QLabel * m_warningLabel;
     QList<int> m_visibleRows;
+    QList<int> m_visibleRowsBase;
     int m_currentMapqThreshold;
+    int m_currentNodeCountThreshold;
     QStringList m_nodeFilters;
     bool m_nodeFilterMatchAll;
+    bool m_queryRangeSorted;
 
     void populateTable();
     void applyMapqFilter();
@@ -131,6 +135,7 @@ private slots:
     void goToPreviousPage();
     void pageSizeChanged(int value);
     void pageCurrentEdited();
+    void handleHeaderClicked(int section);
 
 signals:
     void selectionChanged();

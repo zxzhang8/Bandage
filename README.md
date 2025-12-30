@@ -1,7 +1,7 @@
-# <img src="http://rrwick.github.io/Bandage/images/logo.png" alt="Bandage" width="115" height="115" align="middle">Bandage (fork)
+# <img src="http://rrwick.github.io/Bandage/images/logo.png" alt="Bandage" width="115" height="115" align="middle">BandageASM (fork)
 
 ## Overview
-Bandage is a GUI for viewing assembly graphs from *de novo* assemblers (e.g. Velvet, SPAdes, MEGAHIT). It draws contigs as nodes with their connections, lets you label/colour/move nodes, and extract sequences directly from the graph. More info and binaries live upstream: https://github.com/rrwick/Bandage and http://rrwick.github.io/Bandage/.
+BandageASM is a GUI for viewing assembly graphs. It draws contigs as nodes with their connections, lets you label/colour/move nodes, and extract sequences directly from the graph. More info and binaries live upstream: https://github.com/rrwick/Bandage and http://rrwick.github.io/Bandage/.
 
 ## Fork additions
 - **GAF path visualisation**: import `.gaf` files, list alignments in their own tab, inspect details, and highlight the corresponding paths on the drawn graph.

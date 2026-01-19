@@ -253,6 +253,23 @@ void SelectedNodesPathsWidget::exportPathSequence(int row)
     out << ">selected_node_path\n";
     out << AssemblyGraph::addNewlinesToSequence(sequence);
 
+    QFileInfo fastaInfo(fileName);
+    QString mdFileName = fastaInfo.absolutePath() + "/" + fastaInfo.completeBaseName() + ".md";
+    QFile mdFile(mdFileName);
+    if (mdFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream mdOut(&mdFile);
+        mdOut << "Selected path info\n";
+        mdOut << "Nodes: " << m_table->item(row, 0)->text() << "\n";
+        mdOut << "Length (bp): " << m_table->item(row, 1)->text() << "\n";
+        mdOut << "Read support (avg): " << m_table->item(row, 2)->text() << "\n";
+        mdOut << "Path: " << m_table->item(row, 3)->text() << "\n";
+    }
+    else
+    {
+        QMessageBox::warning(this, "Export FASTA", "Could not open file for writing:\n" + mdFileName);
+    }
+
     g_memory->rememberedPath = QFileInfo(fileName).absolutePath();
 }
 

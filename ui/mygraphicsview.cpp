@@ -55,7 +55,23 @@ void MyGraphicsView::mousePressEvent(QMouseEvent * event)
 
     if (g_settings->preserveSelectionOnBackgroundClick &&
         event->button() == Qt::LeftButton &&
-        !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)))
+        !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)) &&
+        itemAt(event->pos()) == 0)
+    {
+        event->setModifiers(event->modifiers() | Qt::ControlModifier);
+    }
+
+    if (g_settings->preserveSelectionOnBackgroundClick &&
+        event->button() == Qt::RightButton &&
+        !(event->modifiers() & Qt::ControlModifier) &&
+        itemAt(event->pos()) == 0)
+    {
+        scene()->clearSelection();
+    }
+
+    if (g_settings->preserveSelectionOnBackgroundClick &&
+        event->button() == Qt::LeftButton &&
+        !(event->modifiers() & Qt::ShiftModifier))
     {
         QGraphicsItem * item = itemAt(event->pos());
         if (item == 0)

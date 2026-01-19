@@ -261,7 +261,8 @@ void MyGraphicsScene::mousePressEvent(QGraphicsSceneMouseEvent * event)
         !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)))
     {
         QGraphicsItem * item = itemAt(event->scenePos(), QTransform());
-        if (item != 0 && (item->flags() & QGraphicsItem::ItemIsSelectable))
+        GraphicsItemNode * nodeItem = dynamic_cast<GraphicsItemNode *>(item);
+        if (nodeItem != 0)
             event->setModifiers(event->modifiers() | Qt::ControlModifier);
     }
 

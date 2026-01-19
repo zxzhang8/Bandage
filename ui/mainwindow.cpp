@@ -161,6 +161,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->coloursComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(switchColourScheme()));
     connect(ui->actionSave_image_current_view, SIGNAL(triggered()), this, SLOT(saveImageCurrentView()));
     connect(ui->actionSave_image_entire_scene, SIGNAL(triggered()), this, SLOT(saveImageEntireScene()));
+    connect(ui->actionSave_custom_colours, SIGNAL(triggered()), this, SLOT(saveCustomColours()));
     connect(ui->nodeCustomLabelsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeNamesCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeLengthsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
@@ -1952,6 +1953,64 @@ void MainWindow::switchColourScheme()
 
     g_assemblyGraph->resetAllNodeColours();
     g_graphicsView->viewport()->update();
+    updateSaveCustomColoursAction();
+}
+
+void MainWindow::updateSaveCustomColoursAction()
+{
+    bool hasGraph = (m_uiState != NO_GRAPH_LOADED);
+    bool customColours = (g_settings->nodeColourScheme == CUSTOM_COLOURS);
+    ui->actionSave_custom_colours->setEnabled(hasGraph && customColours);
+}
+
+void MainWindow::saveCustomColours()
+{
+    if (g_settings->nodeColourScheme != CUSTOM_COLOURS)
+        return;
+
+    if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
+    {
+        QMessageBox::information(this, "No graph loaded", "Please load a graph before saving custom colours.");
+        return;
+    }
+
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/custom_colours.txt";
+    QString fullFileName = QFileDialog::getSaveFileName(this, "Save custom colours", defaultFileNameAndPath,
+                                                        "Text (*.txt)");
+    if (fullFileName == "")
+        return;
+
+    QFile file(fullFileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, "Save custom colours", "Could not open file for writing:\n" + fullFileName);
+        return;
+    }
+
+    QMap<QString, QStringList> coloursToNodes;
+    QMapIterator<QString, DeBruijnNode*> i(g_assemblyGraph->m_deBruijnGraphNodes);
+    while (i.hasNext())
+    {
+        i.next();
+        DeBruijnNode * node = i.value();
+        QColor displayColour = node->getCustomColourForDisplay();
+        if (!displayColour.isValid())
+            continue;
+        if (displayColour == g_settings->defaultCustomNodeColour)
+            continue;
+        QString colourName = getColourName(displayColour);
+        coloursToNodes[colourName].append(node->getName());
+    }
+
+    QTextStream out(&file);
+    for (QMap<QString, QStringList>::iterator j = coloursToNodes.begin();
+         j != coloursToNodes.end(); ++j)
+    {
+        j.value().sort();
+        out << j.key() << "\t" << j.value().join(",") << Qt::endl;
+    }
+
+    g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
 }
 
 
@@ -2710,6 +2769,8 @@ void MainWindow::setUiState(UiState uiState)
         ui->actionLoad_CSV->setEnabled(true);
         break;
     }
+
+    updateSaveCustomColoursAction();
 }
 
 

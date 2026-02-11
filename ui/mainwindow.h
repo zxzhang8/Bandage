@@ -127,6 +127,8 @@ private:
     void removeAllGraphicsEdgesFromNode(DeBruijnNode * node, bool reverseComplement);
     std::vector<DeBruijnNode *> addComplementaryNodes(std::vector<DeBruijnNode *> nodes);
     void updateSaveCustomColoursAction();
+    void updateSaveNodeLabelsAction();
+    void updateLoadNodeLabelsAction();
 
 private slots:
     void loadGraph(QString fullFileName = "");
@@ -149,6 +151,8 @@ private slots:
     void saveImageCurrentView();
     void saveImageEntireScene();
     void saveCustomColours();
+    void loadNodeLabels();
+    void saveNodeLabels();
     void setTextDisplaySettings();
     void fontButtonPressed();
     void setNodeCustomColour();

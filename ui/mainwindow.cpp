@@ -150,6 +150,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->drawGraphButton, SIGNAL(clicked()), this, SLOT(drawGraph()));
     connect(ui->actionLoad_graph, SIGNAL(triggered()), this, SLOT(loadGraph()));
     connect(ui->actionLoad_CSV, SIGNAL(triggered(bool)), this, SLOT(loadCSV()));
+    connect(ui->actionLoad_node_labels, SIGNAL(triggered()), this, SLOT(loadNodeLabels()));
     connect(ui->actionExit, SIGNAL(triggered()), this, SLOT(close()));
     connect(ui->graphScopeComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(graphScopeChanged()));
     connect(ui->zoomSpinBox, SIGNAL(valueChanged(double)), this, SLOT(zoomSpinBoxChanged()));
@@ -162,6 +163,7 @@ MainWindow::MainWindow(QString fileToLoadOnStartup, bool drawGraphAfterLoad) :
     connect(ui->actionSave_image_current_view, SIGNAL(triggered()), this, SLOT(saveImageCurrentView()));
     connect(ui->actionSave_image_entire_scene, SIGNAL(triggered()), this, SLOT(saveImageEntireScene()));
     connect(ui->actionSave_custom_colours, SIGNAL(triggered()), this, SLOT(saveCustomColours()));
+    connect(ui->actionSave_node_labels, SIGNAL(triggered()), this, SLOT(saveNodeLabels()));
     connect(ui->nodeCustomLabelsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeNamesCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
     connect(ui->nodeLengthsCheckBox, SIGNAL(toggled(bool)), this, SLOT(setTextDisplaySettings()));
@@ -1963,6 +1965,18 @@ void MainWindow::updateSaveCustomColoursAction()
     ui->actionSave_custom_colours->setEnabled(hasGraph && customColours);
 }
 
+void MainWindow::updateSaveNodeLabelsAction()
+{
+    bool hasGraph = (m_uiState != NO_GRAPH_LOADED);
+    ui->actionSave_node_labels->setEnabled(hasGraph);
+}
+
+void MainWindow::updateLoadNodeLabelsAction()
+{
+    bool hasGraph = (m_uiState != NO_GRAPH_LOADED);
+    ui->actionLoad_node_labels->setEnabled(hasGraph);
+}
+
 void MainWindow::saveCustomColours()
 {
     if (g_settings->nodeColourScheme != CUSTOM_COLOURS)
@@ -2013,6 +2027,106 @@ void MainWindow::saveCustomColours()
     g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
 }
 
+void MainWindow::loadNodeLabels()
+{
+    if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
+    {
+        QMessageBox::information(this, "No graph loaded", "Please load a graph before loading node labels.");
+        return;
+    }
+
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/node_labels.txt";
+    QString fullFileName = QFileDialog::getOpenFileName(this, "Load node labels", defaultFileNameAndPath,
+                                                        "Text (*.txt);;All files (*)");
+    if (fullFileName == "")
+        return;
+
+    QString errormsg;
+    int unmatchedNodes = 0;
+
+    try
+    {
+        MyProgressDialog progress(this, "Loading node labels...", false);
+        progress.setWindowModality(Qt::WindowModal);
+        progress.show();
+
+        bool success = g_assemblyGraph->loadNodeLabels(fullFileName, &errormsg, &unmatchedNodes);
+        if (!success)
+        {
+            QString errorTitle = "Error loading node labels";
+            QString errorMessage = "There was an error when attempting to load:\n"
+                                   + fullFileName + "\n\n"
+                                   "Please verify that this file has the correct format.";
+            QMessageBox::warning(this, errorTitle, errorMessage);
+            return;
+        }
+    }
+    catch (...)
+    {
+        QString errorTitle = "Error loading node labels";
+        QString errorMessage = "There was an error when attempting to load:\n"
+                               + fullFileName + "\n\n"
+                               "Please verify that this file has the correct format.";
+        QMessageBox::warning(this, errorTitle, errorMessage);
+        return;
+    }
+
+    if (!errormsg.isEmpty())
+        QMessageBox::warning(this, "Load node labels", errormsg);
+
+    ui->nodeCustomLabelsCheckBox->setChecked(true);
+    g_graphicsView->viewport()->update();
+    g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
+}
+
+void MainWindow::saveNodeLabels()
+{
+    if (g_assemblyGraph->m_deBruijnGraphNodes.size() == 0)
+    {
+        QMessageBox::information(this, "No graph loaded", "Please load a graph before saving node labels.");
+        return;
+    }
+
+    QString defaultFileNameAndPath = g_memory->rememberedPath + "/node_labels.txt";
+    QString fullFileName = QFileDialog::getSaveFileName(this, "Save node labels", defaultFileNameAndPath,
+                                                        "Text (*.txt)");
+    if (fullFileName == "")
+        return;
+
+    QFile file(fullFileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, "Save node labels", "Could not open file for writing:\n" + fullFileName);
+        return;
+    }
+
+    QTextStream out(&file);
+    QMapIterator<QString, DeBruijnNode*> i(g_assemblyGraph->m_deBruijnGraphNodes);
+    while (i.hasNext())
+    {
+        i.next();
+        DeBruijnNode * node = i.value();
+        QString label = node->getCustomLabel();
+        if (label.isEmpty() && node->hasCsvData())
+            label = node->getCsvLine(g_settings->displayNodeCsvDataCol);
+
+        if (label.isEmpty() && !g_settings->doubleMode)
+        {
+            DeBruijnNode * reverseComplement = node->getReverseComplement();
+            if (reverseComplement)
+            {
+                label = reverseComplement->getCustomLabel();
+                if (label.isEmpty() && reverseComplement->hasCsvData())
+                    label = reverseComplement->getCsvLine(g_settings->displayNodeCsvDataCol);
+            }
+        }
+
+        label.replace("\t", "    ");
+        out << node->getName() << "\t" << label << Qt::endl;
+    }
+
+    g_memory->rememberedPath = QFileInfo(fullFileName).absolutePath();
+}
 
 
 void MainWindow::determineContiguityFromSelectedNode()
@@ -2771,6 +2885,8 @@ void MainWindow::setUiState(UiState uiState)
     }
 
     updateSaveCustomColoursAction();
+    updateSaveNodeLabelsAction();
+    updateLoadNodeLabelsAction();
 }
 
 

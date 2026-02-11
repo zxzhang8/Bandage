@@ -111,6 +111,7 @@ public:
 
     QStringList splitCsv(QString line, QString sep=",");
     bool loadCSV(QString filename, QStringList * columns, QString * errormsg, bool * coloursLoaded);
+    bool loadNodeLabels(QString filename, QString * errormsg, int * unmatchedNodes);
     std::vector<DeBruijnNode *> getStartingNodes(QString * errorTitle,
                                                  QString * errorMessage,
                                                  bool doubleMode,

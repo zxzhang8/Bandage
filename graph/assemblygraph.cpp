@@ -1738,6 +1738,67 @@ bool AssemblyGraph::loadCSV(QString filename, QStringList * columns, QString * e
     return true;
 }
 
+bool AssemblyGraph::loadNodeLabels(QString filename, QString * errormsg, int * unmatchedNodes)
+{
+    if (unmatchedNodes)
+        *unmatchedNodes = 0;
+    if (errormsg)
+        errormsg->clear();
+
+    QFile inputFile(filename);
+    if (!inputFile.open(QIODevice::ReadOnly))
+    {
+        if (errormsg)
+            *errormsg = "Unable to read from specified file.";
+        return false;
+    }
+
+    QTextStream in(&inputFile);
+    int unmatched = 0;
+
+    while (!in.atEnd())
+    {
+        QApplication::processEvents();
+
+        QString line = in.readLine();
+        if (line.trimmed().isEmpty())
+            continue;
+
+        int tabIndex = line.indexOf("\t");
+        QString nodeString;
+        QString label;
+        if (tabIndex == -1)
+        {
+            nodeString = line.trimmed();
+            label = "";
+        }
+        else
+        {
+            nodeString = line.left(tabIndex).trimmed();
+            label = line.mid(tabIndex + 1);
+        }
+
+        if (nodeString.isEmpty())
+            continue;
+
+        QString nodeName = getNodeNameFromString(nodeString);
+        if (nodeName.isEmpty() || !m_deBruijnGraphNodes.contains(nodeName))
+        {
+            ++unmatched;
+            continue;
+        }
+
+        m_deBruijnGraphNodes[nodeName]->setCustomLabel(label);
+    }
+
+    if (unmatched > 0 && errormsg)
+        *errormsg = "There were " + QString::number(unmatched) + " unmatched entries in the node label file.";
+    if (unmatchedNodes)
+        *unmatchedNodes = unmatched;
+
+    return true;
+}
+
 
 //This function extracts a node name from a string.
 //The string may be in this Bandage format:
